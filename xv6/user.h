@@ -37,3 +37,9 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+
+// new sys calls
+int setpri(int PID, int pri);
+int getpri(int PID);
+int fork2(int pri);
+int getpinfo(struct pstat *);
