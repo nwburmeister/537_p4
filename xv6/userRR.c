@@ -8,7 +8,6 @@
 void roundRobin(int timeslice, int iterations, char *job, int jobcount){
     char **ptr = &job;
     int pid = fork();
-
     if (pid < 0){
         exit();
     } else if (pid == 0){
@@ -16,7 +15,6 @@ void roundRobin(int timeslice, int iterations, char *job, int jobcount){
     } else if (pid > 0){
 
     }
-
 }
 
 
