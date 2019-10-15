@@ -6,10 +6,13 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h"
+
 
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
+  struct pstat pstat;
 } ptable;
 
 static struct proc *initproc;
@@ -526,4 +529,46 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+// This sets the priority of the specified PID to pri
+// return -1 if pri or PID are invalid
+int
+setpri(int PID, int pri){
+
+    struct proc *p;
+    acquire(&ptable.lock);
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->pid == pid){
+            p->priority = pri;
+
+            release(&ptable.lock);
+            return 0;
+        }
+    }
+    release(&ptable.lock);
+    return -1;
+}
+
+// returns the current priority of the specified PID.
+// If the PID is not valid, it returns -1
+int
+getpri(int PID){
+
+    return -1;
+}
+
+//
+int
+fork2(int pri){
+
+    return -1;
+}
+
+// returns 0 on success and -1 on failure
+int
+getpinfo(struct pstat *){
+
+    return -1;
 }

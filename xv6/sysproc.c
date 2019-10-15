@@ -94,30 +94,58 @@ sys_uptime(void)
 // This sets the priority of the specified PID to pri
 // return -1 if pri or PID are invalid
 int
-setpri(int PID, int pri){
+setpri(void){
+    int PID;
+    int pri;
+
+    if(argint(0, &PID) < 0 || argint(1, &pri) < 0){
+        return -1;
+    }
+
+    int rc = setpri(PID, pri);
 
     return -1;
 }
 
 // returns the current priority of the specified PID.  If the PID is not valid, it returns -1
 int
-getpri(int PID){
+getpri(void){
+    int PID;
 
+    if(argint(0, &PID) < 0){
+        return -1;
+    }
 
+    int rc = getpri(PID);
     return -1;
 }
 
-// 
+//
 int
-fork2(int pri){
+fork2(void){
+
+    int pri;
+
+    if(argint(0, &pri) < 0){
+        return -1;
+    }
+
+    int rc = fork2(pri);
 
     return -1;
 }
 
 // returns 0 on success and -1 on failure
 int
-getpinfo(struct pstat *){
+getpinfo(void){
 
+    struct pstat *ptr;
+
+    if(argint(0, &ptr) < 0){
+        return -1;
+    }
+
+    int rc = getpinfo(ptr);
 
     return -1;
 }
