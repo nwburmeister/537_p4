@@ -102,9 +102,8 @@ sys_setpri(void){
         return -1;
     }
 
-    setpri(PID, pri);
-
-    return -1;
+    int rc = setpri(PID, pri);
+    return rc;
 }
 
 // returns the current priority of the specified PID.  If the PID is not valid, it returns -1
@@ -116,8 +115,8 @@ sys_getpri(void){
         return -1;
     }
 
-    //int rc = getpri(PID);
-    return -1;
+    int rc = getpri(PID);
+    return rc;
 }
 
 //
@@ -130,22 +129,20 @@ sys_fork2(void){
         return -1;
     }
 
-    //int rc = fork2(pri);
-
-    return -1;
+    int rc = fork2(pri);
+    return rc;
 }
 
 // returns 0 on success and -1 on failure
 int
 sys_getpinfo(void){
 
-    int n;
+    struct pstat *ptr;
 
-    if(argint(0, &n) < 0){
+    if(argint(0, (char**)&ptr, sizeof(struct pstat)) < 0){
         return -1;
     }
 
-    //int rc = getpinfo(ptr);
-
-    return -1;
+    int rc = getpinfo(ptr);
+    return rc;
 }

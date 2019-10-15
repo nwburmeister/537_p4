@@ -6,22 +6,31 @@
 #include "user.h"
 
 void roundRobin(int timeslice, int iterations, char *job, int jobcount){
-    char **ptr = &job;
-    int pid = fork();
-    if (pid < 0){
-        exit();
-    } else if (pid == 0){
-        exec(job, ptr);
-    } else if (pid > 0){
 
+    for (int i = 0; i < iterations; i++){
+        for (int j = 0; j < jobcount; j++){
+
+        }
+
+        char **ptr = &job;
+
+        int pid = fork();
+        if (pid < 0){
+            exit();
+        } else if (pid == 0){
+            exec(job, ptr);
+        } else if (pid > 0){
+
+        }
     }
+
 }
 
 
 int main(int argc, char *argv[]) {
     if(argc != 5) {
         // TODO: print error message
-        return 0;
+        exit();
     }
 
     int timeslice = atoi(argv[1]);

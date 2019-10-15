@@ -595,5 +595,18 @@ fork2(int pri){
 int
 getpinfo(struct pstat *pstat){
 
-    return -1;
+    struct proc *p;
+    // LOCK THE TABLE
+    acquire(&ptable.lock);
+    for (int i = 0; i < NPROC; i++){
+        p = &ptable.proc[i];
+        pstat->inuse = (p->state != UNUSED);
+        pstat->pid = p->pid;
+        pstat->priority = p->priority;
+        pstat->state[i] = p->state;
+
+    }
+    // RELEASE THE LOCK
+    release(&ptable.lock);
+    return 0;
 }
