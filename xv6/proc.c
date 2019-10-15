@@ -544,7 +544,7 @@ setpri(int PID, int pri){
     }
 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->pid == pid){
+        if(p->pid == PID){
             p->priority = pri;
 
             release(&ptable.lock);
@@ -563,7 +563,7 @@ getpri(int PID){
     acquire(&ptable.lock);
 
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        if (p->pid == pid) {
+        if (p->pid == PID) {
             release(&ptable.lock);
             return p->priority;
         }
@@ -575,24 +575,25 @@ getpri(int PID){
 //
 int
 fork2(int pri){
-    pid_t pid = fork(); // spawn new proc
+    int pid = fork(); // spawn new proc
     if(pid < 0){
         // TODO: PROMPT ERROR
-        exit(1);
+        exit();
     }
     else if(pid == 0) {
-        int c_pid = getpid();
-        setpri(c_pid, pri);
+        // execvp()
     }
-    else {
-
+    else if (pid > 0) {
+        //char str[] = "hello\n";
+        //write(1, str, strlen(str));
+        setpri(pid, pri);
     }
     return -1;
 }
 
 // returns 0 on success and -1 on failure
 int
-getpinfo(struct pstat *){
+getpinfo(struct pstat *pstat){
 
     return -1;
 }

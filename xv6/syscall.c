@@ -104,9 +104,9 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 // adding defs
-extern int sys_pri(void);
+extern int sys_setpri(void);
 extern int sys_getpri(void);
-extern int fork2(void);
+extern int sys_fork2(void);
 extern int sys_getpinfo(void);
 
 // adding decl for four system calls
@@ -132,7 +132,7 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_setpri]  sys_pri,
+[SYS_setpri]  sys_setpri,
 [SYS_getpri]  sys_getpri,
 [SYS_fork2]   sys_fork2,
 [SYS_getpinfo] sys_getpinfo,
