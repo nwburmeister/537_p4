@@ -1,5 +1,6 @@
 struct stat;
 struct rtcdate;
+struct pstat;
 
 // system calls
 int fork(void);
@@ -39,7 +40,8 @@ void free(void*);
 int atoi(const char*);
 
 // new sys calls
+
 int setpri(int PID, int pri);
 int getpri(int PID);
 int fork2(int pri);
-int getpinfo(struct pstat *);
+int getpinfo(struct pstat*);
