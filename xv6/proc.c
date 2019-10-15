@@ -539,6 +539,10 @@ setpri(int PID, int pri){
     struct proc *p;
     acquire(&ptable.lock);
 
+    if (pri < 0 || pri > 3) {
+        return -1;
+    }
+
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
         if(p->pid == pid){
             p->priority = pri;
@@ -555,14 +559,34 @@ setpri(int PID, int pri){
 // If the PID is not valid, it returns -1
 int
 getpri(int PID){
+    struct proc *p;
+    acquire(&ptable.lock);
 
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if (p->pid == pid) {
+            release(&ptable.lock);
+            return p->priority;
+        }
+    }
+    release(&ptable.lock);
     return -1;
 }
 
 //
 int
 fork2(int pri){
+    pid_t pid = fork(); // spawn new proc
+    if(pid < 0){
+        // TODO: PROMPT ERROR
+        exit(1);
+    }
+    else if(pid == 0) {
+        int c_pid = getpid();
+        setpri(c_pid, pri);
+    }
+    else {
 
+    }
     return -1;
 }
 
