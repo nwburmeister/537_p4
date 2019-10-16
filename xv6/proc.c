@@ -17,6 +17,15 @@ struct {
   struct proc *priority1[NPROC]; // SECOND PRIORITY
   struct proc *priority2[NPROC]; // THIRD PRIORITY
   struct proc *priority3[NPROC]; // FOURTH PRIORITY
+
+  // COPIED FROM PSTAT
+  int inuse[NPROC]; // whether this slot of the process table is in use (1 or 0)
+  int pid[NPROC];   // PID of each process
+  int priority[NPROC];  // current priority level of each process (0-3)
+  enum procstate state[NPROC];  // current state (e.g., SLEEPING or RUNNABLE) of each process
+  int ticks[NPROC][4]; // total num ticks each process has accumulated at each priority
+  int qtail[NPROC][4]; // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
+
 } ptable;
 
 static struct proc *initproc;
@@ -82,11 +91,12 @@ allocproc(void)
   struct proc *p;
   char *sp;
 
+
   acquire(&ptable.lock);
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == UNUSED)
-      goto found;
+      if(p->state == UNUSED)
+          goto found;
 
   release(&ptable.lock);
   return 0;
@@ -117,6 +127,8 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+  // ADDED BY US
+
 
   return p;
 }
@@ -154,7 +166,8 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
+  // ADDED BY US
+  p->priority = 3;
   release(&ptable.lock);
 }
 
@@ -546,11 +559,17 @@ setpri(int PID, int pri){
 
     acquire(&ptable.lock);
     struct proc *p;
-
+    int position = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
         if( p->pid == PID ){
             p->priority = pri;
 
+            ptable.inuse[position] = 1;
+            ptable.pid[position] = p->pid;
+            ptable.priority[position] = pri;
+
+            // FINDS PRIORITY QUEUE THAT WE WANT
+            // TO PUT PROC IN
             struct proc **ptr;
             if(pri == 0) {
                 ptr = ptable.priority0;
@@ -562,6 +581,7 @@ setpri(int PID, int pri){
                 ptr = ptable.priority3;
             }
 
+            // PLACES PROC IN PRIORITY QUEUE
             struct proc **ptr2;
             for(ptr2 = ptr; ptr2 < &ptr[NPROC]; ptr2++){
                 if (ptr2 == UNUSED){
@@ -571,6 +591,7 @@ setpri(int PID, int pri){
                 }
             }
         }
+        position++;
     }
 
     release(&ptable.lock);
@@ -646,19 +667,16 @@ fork2(int pri){
 // returns 0 on success and -1 on failure
 int
 getpinfo(struct pstat *pstat){
-    struct proc *p;
 
     acquire(&ptable.lock);
 
-    for (int i = 0; i < NPROC; i++){
-        p = &ptable.proc[i];
-        pstat->inuse = (p->state != UNUSED);
-        pstat->pid = p->pid;
-        pstat->priority = p->priority;
-        pstat->state[i] = p->state;
+    pstat->inuse = ptable.inuse;
+    pstat->pid = ptable.pid;
+    pstat->priority = ptable.priority;
+    pstat->state = ptable.state;
+    pstat->ticks = ptable.ticks;
+    pstat->qtail = ptable.qtail;
 
-    }
-    // RELEASE THE LOCK
     release(&ptable.lock);
     return 0;
 }
