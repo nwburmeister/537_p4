@@ -10,22 +10,30 @@
 #include "proc.h"
 #include "pstat.h"
 
+int status;
+
 void roundRobin(int timeslice, int iterations, char *job, int jobcount){
 
   //  struct pstat *pstat;
 
     char **ptr = &job;
+    printf(1, "%s\n", job);
+    int pid = fork();
+    //getpinfo(pstat);
+    if (pid < 0){
+        // TODO PRINT ERROR MESSAGE
+        exit();
+    } else if (pid == 0){
+        printf(1, "%s\n", "Executing");
+        exec(job, ptr);
 
+    } else if (pid > 0){
+        wait(&status);
+    }
+    printf(1, "%s\n", "Sleeping!");
+    sleep(1000);
     for (int i = 0; i < jobcount; i++) {
-        int pid = fork2(3);
-        //getpinfo(pstat);
-        if (pid < 0){
-            // TODO PRINT ERROR MESSAGE
-            exit();
-        } else if (pid == 0){
-            exec(job, ptr);
 
-        }
     }
 }
 

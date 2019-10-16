@@ -50,7 +50,7 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   int priority;                // priority of proc
-
+  struct proc *next;           // points to next proc to be run
 
 };
 

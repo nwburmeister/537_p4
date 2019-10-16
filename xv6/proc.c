@@ -9,16 +9,11 @@
 #include "pstat.h"
 
 
+#define NULL 0
 
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
-  // for arrays for priority queue
-  struct proc *priority0[NPROC]; // FIRST PRIORITY
-  struct proc *priority1[NPROC]; // SECOND PRIORITY
-  struct proc *priority2[NPROC]; // THIRD PRIORITY
-  struct proc *priority3[NPROC]; // FOURTH PRIORITY
-
   // COPIED FROM PSTAT
   int inuse[NPROC]; // whether this slot of the process table is in use (1 or 0)
   int pid[NPROC];   // PID of each process
@@ -26,8 +21,21 @@ struct {
   enum procstate state[NPROC];  // current state (e.g., SLEEPING or RUNNABLE) of each process
   int ticks[NPROC][4]; // total num ticks each process has accumulated at each priority
   int qtail[NPROC][4]; // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
-
 } ptable;
+
+
+// **********************CREATED BY US ***********************
+// CREATE AN ARRAY WITH FOUR PRIORITY QUEUES
+struct queue {
+    struct proc *head;
+    struct proc *tail;
+};
+
+struct queue priorityQueue[4];
+
+int timeslices = {20, 16, 12, 8};
+
+// ***********************************************************
 
 static struct proc *initproc;
 
@@ -347,27 +355,52 @@ scheduler(void)
   for(;;){
     // Enable interrupts on this processor.
     sti();
-
     // Loop over process table looking for process to run.
+    // TODO: CHANGE SCHEDULER PROCESS
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    for (int i = 0; i < 4; i++){
+        for (p = priorityQueue[i].head; p != NULL; ){
+            // proc in queue is in ready state
+            if (p->state == RUNNABLE){
+                // Switch to chosen process.  It is the process's job
+                // to release ptable.lock and then reacquire it
+                // before jumping back to us.
+                c->proc = p;
+                switchuvm(p);
+                p->state = RUNNING;
+                swtch(&(c->scheduler), p->context);
+                switchkvm();
+                c->proc = 0;
+                // TODO: EXPAND SCHEDULER LOGIC HERE
+                // CHECK IF PROC HAS EXCEEDED CURRENT TIMER TICKS
+                //
+            }
+        }
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
     }
+
+
+
+    // TODO: REMOVE OLD SCHEDULER CODE, KEEP FOR REF UNTIL IMP DONE
+//    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//      if(p->state != RUNNABLE){}
+//        continue;
+//
+//      // Switch to chosen process.  It is the process's job
+//      // to release ptable.lock and then reacquire it
+//      // before jumping back to us.
+//      c->proc = p;
+//      switchuvm(p);
+//      p->state = RUNNING;
+//
+//      swtch(&(c->scheduler), p->context);
+//      switchkvm();
+//
+//      // Process is done running for now.
+//      // It should have changed its p->state before coming back.
+//      c->proc = 0;
+//    }
     release(&ptable.lock);
 
   }
@@ -569,28 +602,16 @@ setpri(int PID, int pri){
             ptable.pid[position] = p->pid;
             ptable.priority[position] = pri;
 
-            // FINDS PRIORITY QUEUE THAT WE WANT
-            // TO PUT PROC IN
-            struct proc **ptr;
-            if(pri == 0) {
-                ptr = ptable.priority0;
-            } else if (pri == 1) {
-                ptr = ptable.priority1;
-            } else if (pri == 2) {
-                ptr = ptable.priority2;
+            // TODO: REVIEW CHANGES
+            // IF EMPTY, INIT WITH ONE PROC
+            if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL){
+                priorityQueue[pri].head = p;
+                priorityQueue[pri].tail = p;
             } else {
-                ptr = ptable.priority3;
+                priorityQueue[pri].tail->next = p;
+                priorityQueue[pri].tail = p;
             }
-
-            // PLACES PROC IN PRIORITY QUEUE
-            struct proc **ptr2;
-            for(ptr2 = ptr; ptr2 < &ptr[NPROC]; ptr2++){
-                if (ptr2 == UNUSED){
-                    *ptr2 = p;
-                    release(&ptable.lock);
-                    return 0;
-                }
-            }
+            p->next = NULL;
         }
         position++;
     }
@@ -663,6 +684,16 @@ fork2(int pri){
     release(&ptable.lock);
 
     return pid;
+}
+
+void printQueue() {
+    // helper method for printing the current pqueue
+    struct proc *p;
+    for (int i = 0; i < 4; i++){
+        for (p = priorityQueue[i].head; p != NULL;){
+            cprintf("%s\n", p->name);
+        }
+    }
 }
 
 // returns 0 on success and -1 on failure
