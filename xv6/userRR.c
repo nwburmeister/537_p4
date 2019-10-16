@@ -2,20 +2,23 @@
 // Created by nikolas on 10/14/19.
 //
 
+
 #include "types.h"
 #include "user.h"
-#include "defs.h"
+#include "param.h"
+#include "mmu.h"
+#include "proc.h"
 #include "pstat.h"
 
 void roundRobin(int timeslice, int iterations, char *job, int jobcount){
 
-    struct pstat *pstat;
+  //  struct pstat *pstat;
 
     char **ptr = &job;
 
     for (int i = 0; i < jobcount; i++) {
         int pid = fork2(3);
-        getpinfo(pstat);
+        //getpinfo(pstat);
         if (pid < 0){
             // TODO PRINT ERROR MESSAGE
             exit();

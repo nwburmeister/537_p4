@@ -9,6 +9,7 @@
 #include "pstat.h"
 
 
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -577,7 +578,7 @@ setpri(int PID, int pri){
                 ptr = ptable.priority1;
             } else if (pri == 2) {
                 ptr = ptable.priority2;
-            } else if (pri == 3) {
+            } else {
                 ptr = ptable.priority3;
             }
 
@@ -670,12 +671,16 @@ getpinfo(struct pstat *pstat){
 
     acquire(&ptable.lock);
 
-    pstat->inuse = ptable.inuse;
-    pstat->pid = ptable.pid;
-    pstat->priority = ptable.priority;
-    pstat->state = ptable.state;
-    pstat->ticks = ptable.ticks;
-    pstat->qtail = ptable.qtail;
+    for (int i = 0; i < NPROC; i++){
+        pstat->inuse[i] = ptable.inuse[i];
+        pstat->pid[i] = ptable.pid[i];
+        pstat->priority[i] = ptable.priority[i];
+        pstat->state[i] = ptable.state[i];
+        for (int j = 0; j < 4; i++) {
+            pstat->ticks[i][j] = ptable.ticks[i][j];
+            pstat->qtail[i][j] = ptable.qtail[i][j];
+        }
+    }
 
     release(&ptable.lock);
     return 0;
