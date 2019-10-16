@@ -51,6 +51,10 @@ struct proc {
 
   int priority;                // priority of proc
   struct proc *next;           // points to next proc to be run
+  int ticks;
+  int agg_ticks[4];                // total num ticks each process has accumulated at each priority
+  int qtail[4];                // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
+
 
 };
 

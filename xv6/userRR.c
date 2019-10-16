@@ -28,13 +28,15 @@ void roundRobin(int timeslice, int iterations, char *job, int jobcount){
         exec(job, ptr);
 
     } else if (pid > 0){
-        wait(&status);
+        //wait();
     }
     printf(1, "%s\n", "Sleeping!");
-    sleep(1000);
+    //sleep(1000);
     for (int i = 0; i < jobcount; i++) {
 
     }
+
+
 }
 
 int main(int argc, char *argv[]) {
@@ -48,7 +50,9 @@ int main(int argc, char *argv[]) {
     char *job = malloc(sizeof(char) * (strlen(argv[3]) + 1));
     strcpy(job, argv[3]);
     int jobcount = atoi(argv[4]);
+    int ppid = getpid();
 
+    setpri(ppid, 3);
     roundRobin(timeslice, iterations, job, jobcount);
     free(job);
     exit();

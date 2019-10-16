@@ -33,11 +33,13 @@ struct queue {
 
 struct queue priorityQueue[4];
 
-int timeslices = {20, 16, 12, 8};
+int timeslices[4] = {20, 16, 12, 8};
 
 // ***********************************************************
 
 static struct proc *initproc;
+
+void printQueue();
 
 int nextpid = 1;
 extern void forkret(void);
@@ -97,46 +99,47 @@ myproc(void) {
 static struct proc*
 allocproc(void)
 {
-  struct proc *p;
-  char *sp;
+    struct proc *p;
+    char *sp;
 
 
-  acquire(&ptable.lock);
+    acquire(&ptable.lock);
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-      if(p->state == UNUSED)
-          goto found;
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+        if (p->state == UNUSED)
+            goto found;
 
-  release(&ptable.lock);
-  return 0;
-
-found:
-  p->state = EMBRYO;
-  p->pid = nextpid++;
-
-  release(&ptable.lock);
-
-  // Allocate kernel stack.
-  if((p->kstack = kalloc()) == 0){
-    p->state = UNUSED;
+    release(&ptable.lock);
     return 0;
-  }
-  sp = p->kstack + KSTACKSIZE;
 
-  // Leave room for trap frame.
-  sp -= sizeof *p->tf;
-  p->tf = (struct trapframe*)sp;
+    found:
+    p->state = EMBRYO;
+    p->pid = nextpid++;
 
-  // Set up new context to start executing at forkret,
-  // which returns to trapret.
-  sp -= 4;
-  *(uint*)sp = (uint)trapret;
+    release(&ptable.lock);
 
-  sp -= sizeof *p->context;
-  p->context = (struct context*)sp;
-  memset(p->context, 0, sizeof *p->context);
-  p->context->eip = (uint)forkret;
-  // ADDED BY US
+    // Allocate kernel stack.
+    if ((p->kstack = kalloc()) == 0) {
+        p->state = UNUSED;
+        return 0;
+    }
+    sp = p->kstack + KSTACKSIZE;
+
+    // Leave room for trap frame.
+    sp -= sizeof *p->tf;
+    p->tf = (struct trapframe *) sp;
+
+    // Set up new context to start executing at forkret,
+    // which returns to trapret.
+    sp -= 4;
+    *(uint *) sp = (uint) trapret;
+
+    sp -= sizeof *p->context;
+    p->context = (struct context *) sp;
+    memset(p->context, 0, sizeof *p->context);
+    p->context->eip = (uint) forkret;
+    // ADDED BY US
+
 
 
   return p;
@@ -146,38 +149,51 @@ found:
 void
 userinit(void)
 {
-  struct proc *p;
-  extern char _binary_initcode_start[], _binary_initcode_size[];
+    struct proc *p;
+    extern char _binary_initcode_start[], _binary_initcode_size[];
 
-  p = allocproc();
-  
-  initproc = p;
-  if((p->pgdir = setupkvm()) == 0)
-    panic("userinit: out of memory?");
-  inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
-  p->sz = PGSIZE;
-  memset(p->tf, 0, sizeof(*p->tf));
-  p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
-  p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
-  p->tf->es = p->tf->ds;
-  p->tf->ss = p->tf->ds;
-  p->tf->eflags = FL_IF;
-  p->tf->esp = PGSIZE;
-  p->tf->eip = 0;  // beginning of initcode.S
+    p = allocproc();
 
-  safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
+    initproc = p;
+    if ((p->pgdir = setupkvm()) == 0)
+        panic("userinit: out of memory?");
+    inituvm(p->pgdir, _binary_initcode_start, (int) _binary_initcode_size);
+    p->sz = PGSIZE;
+    memset(p->tf, 0, sizeof(*p->tf));
+    p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
+    p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
+    p->tf->es = p->tf->ds;
+    p->tf->ss = p->tf->ds;
+    p->tf->eflags = FL_IF;
+    p->tf->esp = PGSIZE;
+    p->tf->eip = 0;  // beginning of initcode.S
 
-  // this assignment to p->state lets other cores
-  // run this process. the acquire forces the above
-  // writes to be visible, and the lock is also needed
-  // because the assignment might not be atomic.
-  acquire(&ptable.lock);
+    safestrcpy(p->name, "initcode", sizeof(p->name));
+    p->cwd = namei("/");
 
-  p->state = RUNNABLE;
-  // ADDED BY US
-  p->priority = 3;
-  release(&ptable.lock);
+    // this assignment to p->state lets other cores
+    // run this process. the acquire forces the above
+    // writes to be visible, and the lock is also needed
+    // because the assignment might not be atomic.
+    acquire(&ptable.lock);
+
+    p->state = RUNNABLE;
+    // ADDED BY US
+
+    p->priority = 3;
+
+    if (priorityQueue[p->priority].head == NULL && priorityQueue[p->priority].tail == NULL) {
+        cprintf("%s\n", "entered2");
+        priorityQueue[p->priority].head = p;
+        priorityQueue[p->priority].tail = p;
+    } else {
+        cprintf("%s\n", "entered3");
+        priorityQueue[p->priority].tail->next = p;
+        priorityQueue[p->priority].tail = p;
+    }
+    p->next = NULL;
+
+    release(&ptable.lock);
 }
 
 // Grow current process's memory by n bytes.
@@ -207,44 +223,7 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
-  struct proc *np;
-  struct proc *curproc = myproc();
-
-  // Allocate process.
-  if((np = allocproc()) == 0){
-    return -1;
-  }
-
-  // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
-  }
-  np->sz = curproc->sz;
-  np->parent = curproc;
-  *np->tf = *curproc->tf;
-
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
-
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
-      np->ofile[i] = filedup(curproc->ofile[i]);
-  np->cwd = idup(curproc->cwd);
-
-  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-
-  pid = np->pid;
-
-  acquire(&ptable.lock);
-
-  np->state = RUNNABLE;
-
-  release(&ptable.lock);
-
+  int pid = fork2(-1);
   return pid;
 }
 
@@ -348,48 +327,63 @@ wait(void)
 void
 scheduler(void)
 {
-  struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
-  
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
-    // Loop over process table looking for process to run.
-    // TODO: CHANGE SCHEDULER PROCESS
-    acquire(&ptable.lock);
+    struct proc *p;
+    struct cpu *c = mycpu();
+    c->proc = 0;
 
-    for (int i = 0; i < 4; i++){
-        for (p = priorityQueue[i].head; p != NULL; ){
-            // proc in queue is in ready state
-            if (p->state == RUNNABLE){
-                // Switch to chosen process.  It is the process's job
-                // to release ptable.lock and then reacquire it
-                // before jumping back to us.
-                c->proc = p;
-                switchuvm(p);
-                p->state = RUNNING;
-                swtch(&(c->scheduler), p->context);
-                switchkvm();
-                c->proc = 0;
-                // TODO: EXPAND SCHEDULER LOGIC HERE
-                // CHECK IF PROC HAS EXCEEDED CURRENT TIMER TICKS
-                //
+    for (;;) {
+        // Enable interrupts on this processor.
+        sti();
+
+        // Loop over process table looking for process to run.
+        acquire(&ptable.lock);
+        int flag = 0;
+        for (int i = 3; i >= 0; i--) {
+
+            for (p = priorityQueue[i].head; p != NULL;) {
+                // proc in queue is in ready state
+
+                struct proc *prevProc = NULL;
+                if (p->state == RUNNABLE) {
+                    // Switch to chosen process.  It is the process's job
+                    // to release ptable.lock and then reacquire it
+                    // before jumping back to us.
+                    c->proc = p;
+                    switchuvm(p);
+                    p->state = RUNNING;
+                    swtch(&(c->scheduler), p->context);
+                    switchkvm();
+                    c->proc = 0;
+
+                    if (p->next != NULL) {
+                        priorityQueue[i].head = p->next;
+                        priorityQueue[i].tail->next = p;
+                        priorityQueue[i].tail = p;
+                        flag = 1;
+                    }
+
+                }
+                if (flag){
+                    flag = 0;
+                    prevProc = p;
+                    p = p->next;
+                    prevProc->next = NULL;
+                } else {
+                    p = p->next;
+                }
+
+
             }
         }
 
-    }
-
-
-
-    // TODO: REMOVE OLD SCHEDULER CODE, KEEP FOR REF UNTIL IMP DONE
 //    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-//      if(p->state != RUNNABLE){}
+//      if(p->state != RUNNABLE)
 //        continue;
 //
 //      // Switch to chosen process.  It is the process's job
 //      // to release ptable.lock and then reacquire it
 //      // before jumping back to us.
+//
 //      c->proc = p;
 //      switchuvm(p);
 //      p->state = RUNNING;
@@ -597,21 +591,9 @@ setpri(int PID, int pri){
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
         if( p->pid == PID ){
             p->priority = pri;
-
             ptable.inuse[position] = 1;
             ptable.pid[position] = p->pid;
             ptable.priority[position] = pri;
-
-            // TODO: REVIEW CHANGES
-            // IF EMPTY, INIT WITH ONE PROC
-            if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL){
-                priorityQueue[pri].head = p;
-                priorityQueue[pri].tail = p;
-            } else {
-                priorityQueue[pri].tail->next = p;
-                priorityQueue[pri].tail = p;
-            }
-            p->next = NULL;
         }
         position++;
     }
@@ -643,7 +625,11 @@ fork2(int pri){
 
     if (pri < 0 || pri > 3) {
         // TODO: PRINT ERROR MESSAGE
-        exit();
+        if (pri == -1){
+            pri = 3;
+        }else {
+            exit();
+        }
     }
 
     int i, pid;
@@ -677,21 +663,33 @@ fork2(int pri){
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
     pid = np->pid;
+
+    if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL) {
+        priorityQueue[pri].head = np;
+        priorityQueue[pri].tail = np;
+    } else {
+        priorityQueue[pri].tail->next = np;
+        priorityQueue[pri].tail = np;
+    }
+    np->next = NULL;
+
     setpri(pid, pri);
 
     acquire(&ptable.lock);
     np->state = RUNNABLE;
     release(&ptable.lock);
-
+    printQueue();
     return pid;
 }
 
 void printQueue() {
     // helper method for printing the current pqueue
     struct proc *p;
+
     for (int i = 0; i < 4; i++){
         for (p = priorityQueue[i].head; p != NULL;){
-            cprintf("%s\n", p->name);
+            cprintf("%d\n", p->pid);
+            p = p->next;
         }
     }
 }
