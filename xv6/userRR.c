@@ -4,28 +4,27 @@
 
 #include "types.h"
 #include "user.h"
+#include "defs.h"
+#include "pstat.h"
 
 void roundRobin(int timeslice, int iterations, char *job, int jobcount){
 
-    for (int i = 0; i < iterations; i++){
-        for (int j = 0; j < jobcount; j++){
+    struct pstat *pstat;
 
-        }
+    char **ptr = &job;
 
-        char **ptr = &job;
-
-        int pid = fork();
+    for (int i = 0; i < jobcount; i++) {
+        int pid = fork2(3);
+        getpinfo(pstat);
         if (pid < 0){
+            // TODO PRINT ERROR MESSAGE
             exit();
         } else if (pid == 0){
             exec(job, ptr);
-        } else if (pid > 0){
 
         }
     }
-
 }
-
 
 int main(int argc, char *argv[]) {
     if(argc != 5) {

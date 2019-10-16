@@ -13,7 +13,7 @@ struct cpu {
 extern struct cpu cpus[NCPU];
 extern int ncpu;
 
-// Saved registers for kernel context switches.
+// Saved registers for kernel context switches.`
 // Don't need to save all the segment registers (%cs, etc),
 // because they are constant across kernel contexts.
 // Don't need to save %eax, %ecx, %edx, because the

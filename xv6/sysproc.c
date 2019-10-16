@@ -137,12 +137,13 @@ sys_fork2(void){
 int
 sys_getpinfo(void){
 
-    struct pstat *ptr;
-
-    if(argint(0, (char**)&ptr, sizeof(struct pstat)) < 0){
-        return -1;
-    }
-
-    int rc = getpinfo(ptr);
-    return rc;
+//    struct pstat *ptr;
+//
+//    if(argint(0, (char**)&ptr, sizeof(struct pstat)) < 0){
+//        return -1;
+//    }
+//
+//    int rc = getpinfo(ptr);
+//    return rc;
+    return -1;
 }

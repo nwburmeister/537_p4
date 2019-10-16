@@ -12,7 +12,11 @@
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
-  struct pstat pstat;
+  // for arrays for priority queue
+  struct proc *priority0[NPROC]; // FIRST PRIORITY
+  struct proc *priority1[NPROC]; // SECOND PRIORITY
+  struct proc *priority2[NPROC]; // THIRD PRIORITY
+  struct proc *priority3[NPROC]; // FOURTH PRIORITY
 } ptable;
 
 static struct proc *initproc;
@@ -536,21 +540,39 @@ procdump(void)
 int
 setpri(int PID, int pri){
 
-    struct proc *p;
-    acquire(&ptable.lock);
-
     if (pri < 0 || pri > 3) {
         return -1;
     }
 
+    acquire(&ptable.lock);
+    struct proc *p;
+
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->pid == PID){
+        if( p->pid == PID ){
             p->priority = pri;
 
-            release(&ptable.lock);
-            return 0;
+            struct proc **ptr;
+            if(pri == 0) {
+                ptr = ptable.priority0;
+            } else if (pri == 1) {
+                ptr = ptable.priority1;
+            } else if (pri == 2) {
+                ptr = ptable.priority2;
+            } else if (pri == 3) {
+                ptr = ptable.priority3;
+            }
+
+            struct proc **ptr2;
+            for(ptr2 = ptr; ptr2 < &ptr[NPROC]; ptr2++){
+                if (ptr2 == UNUSED){
+                    *ptr2 = p;
+                    release(&ptable.lock);
+                    return 0;
+                }
+            }
         }
     }
+
     release(&ptable.lock);
     return -1;
 }
@@ -575,29 +597,59 @@ getpri(int PID){
 //
 int
 fork2(int pri){
-    int pid = fork(); // spawn new proc
-    if(pid < 0){
-        // TODO: PROMPT ERROR
+
+    if (pri < 0 || pri > 3) {
+        // TODO: PRINT ERROR MESSAGE
         exit();
     }
-    else if(pid == 0) {
-        // execvp()
+
+    int i, pid;
+    struct proc *np;
+    struct proc *curproc = myproc();
+
+    // Allocate process.
+    if((np = allocproc()) == 0){
+        return -1;
     }
-    else if (pid > 0) {
-        //char str[] = "hello\n";
-        //write(1, str, strlen(str));
-        setpri(pid, pri);
+
+    // Copy process state from proc.
+    if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+        kfree(np->kstack);
+        np->kstack = 0;
+        np->state = UNUSED;
+        return -1;
     }
-    return -1;
+    np->sz = curproc->sz;
+    np->parent = curproc;
+    *np->tf = *curproc->tf;
+
+    // Clear %eax so that fork returns 0 in the child.
+    np->tf->eax = 0;
+
+    for(i = 0; i < NOFILE; i++)
+        if(curproc->ofile[i])
+            np->ofile[i] = filedup(curproc->ofile[i]);
+    np->cwd = idup(curproc->cwd);
+
+    safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+    pid = np->pid;
+    setpri(pid, pri);
+
+    acquire(&ptable.lock);
+    np->state = RUNNABLE;
+    release(&ptable.lock);
+
+    return pid;
 }
 
 // returns 0 on success and -1 on failure
 int
 getpinfo(struct pstat *pstat){
-
     struct proc *p;
-    // LOCK THE TABLE
+
     acquire(&ptable.lock);
+
     for (int i = 0; i < NPROC; i++){
         p = &ptable.proc[i];
         pstat->inuse = (p->state != UNUSED);
