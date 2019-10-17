@@ -189,12 +189,12 @@ userinit(void)
     p->priority = 3;
 
     if (priorityQueue[p->priority].head == NULL && priorityQueue[p->priority].tail == NULL) {
-
+        p->ticks = 0;
+        p->agg_ticks[0] = 0;
+        p->agg_ticks[1] = 0;
+        p->agg_ticks[2] = 0;
+        p->agg_ticks[3] = 0;
         priorityQueue[p->priority].head = p;
-        priorityQueue[p->priority].tail = p;
-    } else {
-
-        priorityQueue[p->priority].tail->next = p;
         priorityQueue[p->priority].tail = p;
     }
     p->next = NULL;
@@ -345,16 +345,17 @@ scheduler(void)
         acquire(&ptable.lock);
 
         for (int i = 3; i >= 0; i--) {
-
+            struct proc *prevProc = NULL;
             for (p = priorityQueue[i].head; p != NULL;) {
                 // proc in queue is in ready state
-                struct proc *prevProc = NULL;
+                int priority = p->priority;
+
                 if (p->state == RUNNABLE) {
                     // Switch to chosen process.  It is the process's job
                     // to release ptable.lock and then reacquire it
                     // before jumping back to us.
 
-                    int priority = p->priority;
+
                     c->proc = p;
                     switchuvm(p);
                     p->state = RUNNING;
@@ -362,6 +363,7 @@ scheduler(void)
                     switchkvm();
                     c->proc = 0;
 
+                    // TODO: AGGREGATE TICKS ON EACH LEVEL
                     // MUST CONSIDER EDGE CASES FOR DEALING WITH QUEUE
                     // 1.
                     // INCREMENT NUMBER OF TICKS FOR GIVEN PROCESS
@@ -374,33 +376,59 @@ scheduler(void)
 
                     p->ticks++;
                     p->agg_ticks[priority]++;
-
+                    cprintf("%d total ticks: %d\n", p->pid, p->ticks);
                     // case 1: timer up and another proc
-                    if (p->ticks >= timeslices[priority] && p->next != NULL && 0){
+                    if (p->ticks >= timeslices[priority] && p->next != NULL){
                         // TICKS ARE OUT, MOVE TO BACK
+                        //cprintf("not null case\n");
+                        p->qtail[priority]++;
                         p->ticks = 0;
                         priorityQueue[i].head = p->next;
                         priorityQueue[i].tail->next = p;
                         priorityQueue[i].tail = p;
                         prevProc = p;
                         prevProc->next = NULL;
-
-                    } else if (p->next != NULL) {
-
+                    } else if (p->ticks >= timeslices[priority] && p->next == NULL){
+                        //cprintf("%d\n", p->next);
+                        p->qtail[priority]++;
                         p->ticks = 0;
-                        priorityQueue[i].head = p->next;
-                        priorityQueue[i].tail->next = p;
-                        priorityQueue[i].tail = p;
-                        prevProc = p;
-                        prevProc->next = NULL;
-                    } else if (p->next == NULL) {
-                        // THERE'S ONLY ONE PROC IN THE QUEUE
-                        continue;
+                    }
+                    prevProc = p;
+                    p = p->next;
+
+                } else if (p->state == UNUSED){
+                    // need to remove the process because it is unused
+
+//                    cprintf("%s\n", "UNUSED");
+                    if (priorityQueue[i].head == priorityQueue[i].tail) {
+//                        cprintf("%s\n", "entered3");
+                        priorityQueue[i].head = NULL;
+                        priorityQueue[i].tail = NULL;
+                        goto jump;
                     }
 
+//                    cprintf("%s\n", "1");
+                    if (p == priorityQueue[i].head){
+//                       cprintf("%s\n", "entered1");
+                       priorityQueue[i].head = priorityQueue[i].head->next;
+                       goto jump;
+                   }
+//                    cprintf("%s\n", "2");
+                    if (p == priorityQueue[i].tail){
+//                       cprintf("%s\n", "entered2");
+                       priorityQueue[i].tail = prevProc;
+                       prevProc->next = NULL;
+                       goto jump;
+                   }
+//                    cprintf("%s\n", "3");
+
+
+                    jump:
+                    prevProc = p;
                     p = p->next;
 
                 } else{
+                    prevProc = NULL;
                     p = p->next;
                 }
 
@@ -408,25 +436,6 @@ scheduler(void)
             }
         }
 
-//    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-//      if(p->state != RUNNABLE)
-//        continue;
-//
-//      // Switch to chosen process.  It is the process's job
-//      // to release ptable.lock and then reacquire it
-//      // before jumping back to us.
-//
-//      c->proc = p;
-//      switchuvm(p);
-//      p->state = RUNNING;
-//
-//      swtch(&(c->scheduler), p->context);
-//      switchkvm();
-//
-//      // Process is done running for now.
-//      // It should have changed its p->state before coming back.
-//      c->proc = 0;
-//    }
     release(&ptable.lock);
 
   }
@@ -696,13 +705,17 @@ fork2(int pri){
 
     pid = np->pid;
 
+    cprintf("%s\n", "trying to add to queue");
     if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL) {
+        cprintf("%s\n", "added queue on null");
         priorityQueue[pri].head = np;
         priorityQueue[pri].tail = np;
     } else {
+        cprintf("%s\n", "procs in queue");
         priorityQueue[pri].tail->next = np;
         priorityQueue[pri].tail = np;
     }
+    cprintf("ADDED head: %p  tail: %p\n", priorityQueue[pri].head, priorityQueue[pri].tail);
     np->next = NULL;
 
     setpri(pid, pri);
