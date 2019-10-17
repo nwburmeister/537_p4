@@ -349,67 +349,43 @@ scheduler(void)
                 int priority = p->priority;
 
                 if (p->state == RUNNABLE) {
-                    // Switch to chosen process.  It is the process's job
-                    // to release ptable.lock and then reacquire it
-                    // before jumping back to us.
-
 
                     c->proc = p;
                     switchuvm(p);
                     p->state = RUNNING;
                     swtch(&(c->scheduler), p->context);
                     switchkvm();
-                    //c->proc = 0;
-
-                    // TODO: AGGREGATE TICKS ON EACH LEVEL
-                    // MUST CONSIDER EDGE CASES FOR DEALING WITH QUEUE
-                    // 1.
-                    // INCREMENT NUMBER OF TICKS FOR GIVEN PROCESS
-                    // 2.
-                    // CHECK IF CURRENT NUMBER OF TICKS DE-QUEUES PROC
-                    // 3.
-                    // WHEN TO DELETE FROM THE QUEUE
-                    // 4.
-                    // WHAT IF WE ONLY HAVE ONE PROC IN QUEUE?
 
                     p->ticks++;
                     p->agg_ticks[priority]++;
-                    cprintf("PID: %d PRIOR: %d Total Ticks: %d\n", p->pid, p->priority, p->ticks);
+                    //cprintf("PID: %d PRIOR: %d Total Ticks: %d\n", p->pid, p->priority, p->ticks);
 
-                    if (p->ticks >= timeslices[priority] && priority == 3){
+                    if (p->ticks >= timeslices[priority] && priority == 3) {
 
                         // HANDLE CASES WITH THE HEAD FIRST
                         if (priorityQueue[i].head == priorityQueue[i].tail) {
                             // IF HEAD EQUALS TAIL, THEN WE ONLY HAVE ONE ITEM IN QUEUE
                             // IN THIS CASE DO NOT INCREMENT P
-                            cprintf("%s\n", "HERE1");
+//                            cprintf("%s\n", "HERE1");
                         } else if (priorityQueue[i].head == p) {
                             // SET HEAD TO NEXT PROC
                             priorityQueue[i].head = p->next;
-                            cprintf("%s\n", "HERE2");
+//                            cprintf("%s\n", "HERE2");
 
                         } else {
                             prevProc->next = p->next;
                             if (priorityQueue[priority].tail == p) {
                                 priorityQueue[priority].tail = prevProc;
-                                cprintf("%s\n", "HERE3");
-                                printQueue();
+//                                cprintf("%s\n", "HERE3");
                             }
-
                         }
 
-                        if (priorityQueue[priority].head == NULL && priorityQueue[priority].tail == NULL){
-                            priorityQueue[priority].head = p;
-                            priorityQueue[priority].tail = p;
-                            cprintf("%s\n", "HERE5");
-                        } else {
-                            priorityQueue[priority].tail->next = p;
-                            priorityQueue[priority].tail = p;
-                            cprintf("%s\n", "HERE6");
-                        }
+                        priorityQueue[priority].tail->next = p;
+                        priorityQueue[priority].tail = p;
+
                         p->ticks = 0;
                         p->next = NULL;
-
+//                        printQueue();
                     } else {
                         //cprintf("%s\n", "HERE");
                     }
@@ -432,6 +408,7 @@ scheduler(void)
                         prevProc->next = p->next;
                         if (priorityQueue[priority].tail == p) {
                             priorityQueue[priority].tail = prevProc;
+                            // AT END OF QUEUE, RESTART LOOP
                             break;
                         }
                         p = p->next;
@@ -441,7 +418,6 @@ scheduler(void)
                     prevProc = p;
                     p = p->next;
                 }
-
             }
         }
 
@@ -637,16 +613,34 @@ setpri(int PID, int pri){
 
     acquire(&ptable.lock);
     struct proc *p;
-    int position = 0;
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if( p->pid == PID ){
-            p->priority = pri;
-            ptable.inuse[position] = 1;
-            ptable.pid[position] = p->pid;
-            ptable.priority[position] = pri;
+
+    for (int i = 3; i >= 0; i ++){
+        struct proc *prevProc = NULL;
+        for (p = priorityQueue[i].head; p != NULL;) {
+            if( p->pid == PID ){
+                p->priority = pri;
+
+                if (p == priorityQueue[i].head) {
+                    priorityQueue[i].head = p->next;
+                } else if (p == priorityQueue[i].tail) {
+                    prevProc->next = NULL;
+                    priorityQueue[i].tail = prevProc;
+                } else {
+                    prevProc->next = p->next;
+                }
+
+                // ADD TO NEW QUEUE
+                priorityQueue[pri].tail->next = p;
+                priorityQueue[pri].tail = p;
+                p->next = NULL;
+                release(&ptable.lock);
+                return 0;
+            }
+            prevProc = p;
+            p = p->next;
         }
-        position++;
     }
+
 
     release(&ptable.lock);
     return -1;
@@ -732,7 +726,7 @@ fork2(int pri){
     acquire(&ptable.lock);
     np->state = RUNNABLE;
     release(&ptable.lock);
-    printQueue();
+
     return pid;
 }
 
