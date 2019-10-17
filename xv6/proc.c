@@ -138,9 +138,15 @@ allocproc(void)
     p->context = (struct context *) sp;
     memset(p->context, 0, sizeof *p->context);
     p->context->eip = (uint) forkret;
+
     // ADDED BY US
 
-
+    // INITIALIZE TICKS FOR NEW PROC
+    p->agg_ticks[0] = 0;
+    p->agg_ticks[1] = 0;
+    p->agg_ticks[2] = 0;
+    p->agg_ticks[3] = 0;
+    p->ticks = 0;
 
   return p;
 }
@@ -183,11 +189,11 @@ userinit(void)
     p->priority = 3;
 
     if (priorityQueue[p->priority].head == NULL && priorityQueue[p->priority].tail == NULL) {
-        cprintf("%s\n", "entered2");
+
         priorityQueue[p->priority].head = p;
         priorityQueue[p->priority].tail = p;
     } else {
-        cprintf("%s\n", "entered3");
+
         priorityQueue[p->priority].tail->next = p;
         priorityQueue[p->priority].tail = p;
     }
@@ -337,17 +343,18 @@ scheduler(void)
 
         // Loop over process table looking for process to run.
         acquire(&ptable.lock);
-        int flag = 0;
+
         for (int i = 3; i >= 0; i--) {
 
             for (p = priorityQueue[i].head; p != NULL;) {
                 // proc in queue is in ready state
-
                 struct proc *prevProc = NULL;
                 if (p->state == RUNNABLE) {
                     // Switch to chosen process.  It is the process's job
                     // to release ptable.lock and then reacquire it
                     // before jumping back to us.
+
+                    int priority = p->priority;
                     c->proc = p;
                     switchuvm(p);
                     p->state = RUNNING;
@@ -355,20 +362,45 @@ scheduler(void)
                     switchkvm();
                     c->proc = 0;
 
-                    if (p->next != NULL) {
+                    // MUST CONSIDER EDGE CASES FOR DEALING WITH QUEUE
+                    // 1.
+                    // INCREMENT NUMBER OF TICKS FOR GIVEN PROCESS
+                    // 2.
+                    // CHECK IF CURRENT NUMBER OF TICKS DE-QUEUES PROC
+                    // 3.
+                    // WHEN TO DELETE FROM THE QUEUE
+                    // 4.
+                    // WHAT IF WE ONLY HAVE ONE PROC IN QUEUE?
+
+                    p->ticks++;
+                    p->agg_ticks[priority]++;
+
+                    // case 1: timer up and another proc
+                    if (p->ticks >= timeslices[priority] && p->next != NULL && 0){
+                        // TICKS ARE OUT, MOVE TO BACK
+                        p->ticks = 0;
                         priorityQueue[i].head = p->next;
                         priorityQueue[i].tail->next = p;
                         priorityQueue[i].tail = p;
-                        flag = 1;
+                        prevProc = p;
+                        prevProc->next = NULL;
+
+                    } else if (p->next != NULL) {
+
+                        p->ticks = 0;
+                        priorityQueue[i].head = p->next;
+                        priorityQueue[i].tail->next = p;
+                        priorityQueue[i].tail = p;
+                        prevProc = p;
+                        prevProc->next = NULL;
+                    } else if (p->next == NULL) {
+                        // THERE'S ONLY ONE PROC IN THE QUEUE
+                        continue;
                     }
 
-                }
-                if (flag){
-                    flag = 0;
-                    prevProc = p;
                     p = p->next;
-                    prevProc->next = NULL;
-                } else {
+
+                } else{
                     p = p->next;
                 }
 
@@ -688,7 +720,8 @@ void printQueue() {
 
     for (int i = 0; i < 4; i++){
         for (p = priorityQueue[i].head; p != NULL;){
-            cprintf("%d\n", p->pid);
+            cprintf("PID: %d Proc: %p  Next: %p\n", p->pid, p, p->next);
+//            cprintf("%d\n", p->pid);
             p = p->next;
         }
     }
