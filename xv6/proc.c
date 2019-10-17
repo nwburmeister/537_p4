@@ -113,40 +113,37 @@ allocproc(void)
     return 0;
 
     found:
-    p->state = EMBRYO;
-    p->pid = nextpid++;
+        p->state = EMBRYO;
+        p->pid = nextpid++;
+        p->agg_ticks[0] = 0;
+        p->agg_ticks[1] = 0;
+        p->agg_ticks[2] = 0;
+        p->agg_ticks[3] = 0;
+        p->ticks = 0;
 
-    release(&ptable.lock);
+        release(&ptable.lock);
 
-    // Allocate kernel stack.
-    if ((p->kstack = kalloc()) == 0) {
-        p->state = UNUSED;
-        return 0;
-    }
-    sp = p->kstack + KSTACKSIZE;
+        // Allocate kernel stack.
+        if ((p->kstack = kalloc()) == 0) {
+            p->state = UNUSED;
+            return 0;
+        }
+        sp = p->kstack + KSTACKSIZE;
 
-    // Leave room for trap frame.
-    sp -= sizeof *p->tf;
-    p->tf = (struct trapframe *) sp;
+        // Leave room for trap frame.
+        sp -= sizeof *p->tf;
+        p->tf = (struct trapframe *) sp;
 
-    // Set up new context to start executing at forkret,
-    // which returns to trapret.
-    sp -= 4;
-    *(uint *) sp = (uint) trapret;
+        // Set up new context to start executing at forkret,
+        // which returns to trapret.
+        sp -= 4;
+        *(uint *) sp = (uint) trapret;
 
-    sp -= sizeof *p->context;
-    p->context = (struct context *) sp;
-    memset(p->context, 0, sizeof *p->context);
-    p->context->eip = (uint) forkret;
+        sp -= sizeof *p->context;
+        p->context = (struct context *) sp;
+        memset(p->context, 0, sizeof *p->context);
+        p->context->eip = (uint) forkret;
 
-    // ADDED BY US
-
-    // INITIALIZE TICKS FOR NEW PROC
-    p->agg_ticks[0] = 0;
-    p->agg_ticks[1] = 0;
-    p->agg_ticks[2] = 0;
-    p->agg_ticks[3] = 0;
-    p->ticks = 0;
 
   return p;
 }
@@ -344,7 +341,8 @@ scheduler(void)
         // Loop over process table looking for process to run.
         acquire(&ptable.lock);
 
-        for (int i = 3; i >= 0; i--) {
+        int i = 0;
+        for (i = 3; i >= 0; i--) {
             struct proc *prevProc = NULL;
             for (p = priorityQueue[i].head; p != NULL;) {
                 // proc in queue is in ready state
@@ -361,7 +359,7 @@ scheduler(void)
                     p->state = RUNNING;
                     swtch(&(c->scheduler), p->context);
                     switchkvm();
-                    c->proc = 0;
+                    //c->proc = 0;
 
                     // TODO: AGGREGATE TICKS ON EACH LEVEL
                     // MUST CONSIDER EDGE CASES FOR DEALING WITH QUEUE
@@ -376,62 +374,73 @@ scheduler(void)
 
                     p->ticks++;
                     p->agg_ticks[priority]++;
-                    cprintf("%d total ticks: %d\n", p->pid, p->ticks);
-                    // case 1: timer up and another proc
-                    if (p->ticks >= timeslices[priority] && p->next != NULL){
-                        // TICKS ARE OUT, MOVE TO BACK
-                        //cprintf("not null case\n");
-                        p->qtail[priority]++;
-                        p->ticks = 0;
-                        priorityQueue[i].head = p->next;
-                        priorityQueue[i].tail->next = p;
-                        priorityQueue[i].tail = p;
-                        prevProc = p;
-                        prevProc->next = NULL;
-                    } else if (p->ticks >= timeslices[priority] && p->next == NULL){
-                        //cprintf("%d\n", p->next);
-                        p->qtail[priority]++;
-                        p->ticks = 0;
-                    }
-                    prevProc = p;
-                    p = p->next;
+                    cprintf("PID: %d PRIOR: %d Total Ticks: %d\n", p->pid, p->priority, p->ticks);
 
+                    if (p->ticks >= timeslices[priority] && priority == 3){
+
+                        // HANDLE CASES WITH THE HEAD FIRST
+                        if (priorityQueue[i].head == priorityQueue[i].tail) {
+                            // IF HEAD EQUALS TAIL, THEN WE ONLY HAVE ONE ITEM IN QUEUE
+                            // IN THIS CASE DO NOT INCREMENT P
+                            cprintf("%s\n", "HERE1");
+                        } else if (priorityQueue[i].head == p) {
+                            // SET HEAD TO NEXT PROC
+                            priorityQueue[i].head = p->next;
+                            cprintf("%s\n", "HERE2");
+
+                        } else {
+                            prevProc->next = p->next;
+                            if (priorityQueue[priority].tail == p) {
+                                priorityQueue[priority].tail = prevProc;
+                                cprintf("%s\n", "HERE3");
+                                printQueue();
+                            }
+
+                        }
+
+                        if (priorityQueue[priority].head == NULL && priorityQueue[priority].tail == NULL){
+                            priorityQueue[priority].head = p;
+                            priorityQueue[priority].tail = p;
+                            cprintf("%s\n", "HERE5");
+                        } else {
+                            priorityQueue[priority].tail->next = p;
+                            priorityQueue[priority].tail = p;
+                            cprintf("%s\n", "HERE6");
+                        }
+                        p->ticks = 0;
+                        p->next = NULL;
+
+                    } else {
+                        //cprintf("%s\n", "HERE");
+                    }
+
+                    // IF NO CASES ARE MET, BREAK AND REDO SEARCH FROM TOP LEVEL
+                    //p = p->next;
+                    c->proc = 0;
+                    break;
                 } else if (p->state == UNUSED){
                     // need to remove the process because it is unused
 
-//                    cprintf("%s\n", "UNUSED");
                     if (priorityQueue[i].head == priorityQueue[i].tail) {
-//                        cprintf("%s\n", "entered3");
                         priorityQueue[i].head = NULL;
                         priorityQueue[i].tail = NULL;
-                        goto jump;
+                        break;
+                    } else if (p == priorityQueue[i].head){
+                       priorityQueue[i].head = priorityQueue[i].head->next;
+                       p = p->next;
+                    } else {
+                        prevProc->next = p->next;
+                        if (priorityQueue[priority].tail == p) {
+                            priorityQueue[priority].tail = prevProc;
+                            break;
+                        }
+                        p = p->next;
                     }
 
-//                    cprintf("%s\n", "1");
-                    if (p == priorityQueue[i].head){
-//                       cprintf("%s\n", "entered1");
-                       priorityQueue[i].head = priorityQueue[i].head->next;
-                       goto jump;
-                   }
-//                    cprintf("%s\n", "2");
-                    if (p == priorityQueue[i].tail){
-//                       cprintf("%s\n", "entered2");
-                       priorityQueue[i].tail = prevProc;
-                       prevProc->next = NULL;
-                       goto jump;
-                   }
-//                    cprintf("%s\n", "3");
-
-
-                    jump:
+                } else {
                     prevProc = p;
                     p = p->next;
-
-                } else{
-                    prevProc = NULL;
-                    p = p->next;
                 }
-
 
             }
         }
@@ -733,7 +742,7 @@ void printQueue() {
 
     for (int i = 0; i < 4; i++){
         for (p = priorityQueue[i].head; p != NULL;){
-            cprintf("PID: %d Proc: %p  Next: %p\n", p->pid, p, p->next);
+            cprintf("PID: %d Proc: %p  Next: %p Head: %p Tail: %p\n", p->pid, p, p->next, priorityQueue[i].head, priorityQueue[i].tail);
 //            cprintf("%d\n", p->pid);
             p = p->next;
         }
