@@ -18,7 +18,7 @@ void roundRobin(int timeslice, int iterations, char *job, int jobcount){
 
 
     char **ptr = &job;
-    struct pstat *pstat = 0;
+    struct pstat *pstat = malloc(sizeof(struct pstat));
     int jcount = 0;
 
     while ( jcount < jobcount ) {
@@ -40,17 +40,17 @@ void roundRobin(int timeslice, int iterations, char *job, int jobcount){
                 setpri(pstat->pid[j], 3);
             }
         }
-        //printf(1, "%s\n", "iteration loop");
+
         sleep(timeslice);
     }
-    printf(1, "%s\n\n\n", "FINAL");
+
     getpinfo(pstat);
     for (int i = 0; i < NPROC; i++) {
-        //printf(1, "%d\n", (*pstat).state[i]);
-        if (pstat->state[i] == 5) {
-            printf(1, "%s\n", "here");
+        if (pstat->state[i] == ZOMBIE) {
+            //printf(1, "%s\n", "entered");
+            wait();
+            kill(pstat->pid[i]);
         }
-        kill(pstat->pid[i]);
     }
 
 
@@ -67,9 +67,7 @@ int main(int argc, char *argv[]) {
     char *job = malloc(sizeof(char) * (strlen(argv[3]) + 1));
     strcpy(job, argv[3]);
     int jobcount = atoi(argv[4]);
-    //int ppid = getpid();
 
-    //setpri(ppid, 3);
     roundRobin(timeslice, iterations, job, jobcount);
     free(job);
     exit();

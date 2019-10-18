@@ -722,14 +722,8 @@ fork2(int pri) {
         priorityQueue[pri].tail = np;
     }
 
-    //cprintf("ADDED head: %p  tail: %p\n", priorityQueue[pri].head, priorityQueue[pri].tail);
     np->next = NULL;
-
     np->priority = pri;
-
-    cprintf("%s\n", "NEW FORK CALL");
-    printQueue();
-    //cprintf("%s\n", "done with setpri");
 
     acquire(&ptable.lock);
     np->state = RUNNABLE;
@@ -757,25 +751,21 @@ int
 getpinfo(struct pstat *pstat){
 
     acquire(&ptable.lock);
-
     for (int i = 0; i < NPROC; i++){
         struct proc proc = ptable.proc[i];
-        // SET PROC
-        fpstat.inuse[i] = (proc.state == UNUSED);
-        fpstat.pid[i] = proc.pid;
-        fpstat.priority[i] = proc.priority;
+        pstat->inuse[i] = (proc.state == UNUSED);
+        pstat->pid[i] = proc.pid;
+        pstat->priority[i] = proc.priority;
+        pstat->state[i] = proc.state;
 
-        fpstat.state[i] = proc.state;
         for (int j = 0; j < 4; j++) {
-            fpstat.ticks[i][j] = proc.agg_ticks[j];
-            fpstat.qtail[i][j] = proc.qtail[j];
+            pstat->ticks[i][j] = proc.agg_ticks[j];
+            pstat->qtail[i][j] = proc.qtail[j];
         }
     }
 
-    pstat = &fpstat;
-
     for(int i = 0; i < NPROC; i++) {
-        cprintf("%d\n", pstat->state[i]);
+        //cprintf("%d\n", pstat->state[i]);
     }
     release(&ptable.lock);
     return 0;
