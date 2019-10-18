@@ -15,12 +15,12 @@ struct {
   struct spinlock lock;
   struct proc proc[NPROC];
   // COPIED FROM PSTAT
-  int inuse[NPROC]; // whether this slot of the process table is in use (1 or 0)
-  int pid[NPROC];   // PID of each process
-  int priority[NPROC];  // current priority level of each process (0-3)
-  enum procstate state[NPROC];  // current state (e.g., SLEEPING or RUNNABLE) of each process
-  int ticks[NPROC][4]; // total num ticks each process has accumulated at each priority
-  int qtail[NPROC][4]; // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
+  //int inuse[NPROC]; // whether this slot of the process table is in use (1 or 0)
+//  int pid[NPROC];   // PID of each process
+//  int priority[NPROC];  // current priority level of each process (0-3)
+//  enum procstate state[NPROC];  // current state (e.g., SLEEPING or RUNNABLE) of each process
+//  int ticks[NPROC][4]; // total num ticks each process has accumulated at each priority
+//  int qtail[NPROC][4]; // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
 } ptable;
 
 
@@ -32,6 +32,8 @@ struct queue {
 };
 
 struct queue priorityQueue[4];
+
+struct pstat fpstat;
 
 int timeslices[4] = {20, 16, 12, 8};
 
@@ -99,6 +101,7 @@ myproc(void) {
 static struct proc*
 allocproc(void)
 {
+
     struct proc *p;
     char *sp;
 
@@ -108,6 +111,7 @@ allocproc(void)
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
         if (p->state == UNUSED)
             goto found;
+
 
     release(&ptable.lock);
     return 0;
@@ -610,16 +614,21 @@ setpri(int PID, int pri){
     if (pri < 0 || pri > 3) {
         return -1;
     }
-
     acquire(&ptable.lock);
     struct proc *p;
 
-    for (int i = 3; i >= 0; i ++){
+    for (int i = 3; i >= 0; i--){
         struct proc *prevProc = NULL;
         for (p = priorityQueue[i].head; p != NULL;) {
-            if( p->pid == PID ){
-                p->priority = pri;
 
+            if( p->pid == PID ){
+
+                if (p->priority == pri){
+                    // TODO: PRINT ERROR MESSAGE
+                    return -1;
+                }
+
+                p->priority = pri;
                 if (p == priorityQueue[i].head) {
                     priorityQueue[i].head = p->next;
                 } else if (p == priorityQueue[i].tail) {
@@ -628,8 +637,6 @@ setpri(int PID, int pri){
                 } else {
                     prevProc->next = p->next;
                 }
-
-                // ADD TO NEW QUEUE
                 priorityQueue[pri].tail->next = p;
                 priorityQueue[pri].tail = p;
                 p->next = NULL;
@@ -640,7 +647,6 @@ setpri(int PID, int pri){
             p = p->next;
         }
     }
-
 
     release(&ptable.lock);
     return -1;
@@ -665,17 +671,16 @@ getpri(int PID){
 
 //
 int
-fork2(int pri){
+fork2(int pri) {
 
     if (pri < 0 || pri > 3) {
         // TODO: PRINT ERROR MESSAGE
-        if (pri == -1){
+        if (pri == -1) {
             pri = 3;
         }else {
             exit();
         }
     }
-
     int i, pid;
     struct proc *np;
     struct proc *curproc = myproc();
@@ -708,24 +713,28 @@ fork2(int pri){
 
     pid = np->pid;
 
-    cprintf("%s\n", "trying to add to queue");
+
     if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL) {
-        cprintf("%s\n", "added queue on null");
         priorityQueue[pri].head = np;
         priorityQueue[pri].tail = np;
     } else {
-        cprintf("%s\n", "procs in queue");
         priorityQueue[pri].tail->next = np;
         priorityQueue[pri].tail = np;
     }
-    cprintf("ADDED head: %p  tail: %p\n", priorityQueue[pri].head, priorityQueue[pri].tail);
+
+    //cprintf("ADDED head: %p  tail: %p\n", priorityQueue[pri].head, priorityQueue[pri].tail);
     np->next = NULL;
 
-    setpri(pid, pri);
+    np->priority = pri;
+
+    cprintf("%s\n", "NEW FORK CALL");
+    printQueue();
+    //cprintf("%s\n", "done with setpri");
 
     acquire(&ptable.lock);
     np->state = RUNNABLE;
     release(&ptable.lock);
+
 
     return pid;
 }
@@ -736,8 +745,8 @@ void printQueue() {
 
     for (int i = 0; i < 4; i++){
         for (p = priorityQueue[i].head; p != NULL;){
-            cprintf("PID: %d Proc: %p  Next: %p Head: %p Tail: %p\n", p->pid, p, p->next, priorityQueue[i].head, priorityQueue[i].tail);
-//            cprintf("%d\n", p->pid);
+            //cprintf("PID: %d Proc: %p  Next: %p Head: %p Tail: %p\n", p->pid, p, p->next, priorityQueue[i].head, priorityQueue[i].tail);
+            cprintf("PID: %d PRIORITY: %d \n", p->pid, p->priority);
             p = p->next;
         }
     }
@@ -750,16 +759,24 @@ getpinfo(struct pstat *pstat){
     acquire(&ptable.lock);
 
     for (int i = 0; i < NPROC; i++){
-        pstat->inuse[i] = ptable.inuse[i];
-        pstat->pid[i] = ptable.pid[i];
-        pstat->priority[i] = ptable.priority[i];
-        pstat->state[i] = ptable.state[i];
-        for (int j = 0; j < 4; i++) {
-            pstat->ticks[i][j] = ptable.ticks[i][j];
-            pstat->qtail[i][j] = ptable.qtail[i][j];
+        struct proc proc = ptable.proc[i];
+        // SET PROC
+        fpstat.inuse[i] = (proc.state == UNUSED);
+        fpstat.pid[i] = proc.pid;
+        fpstat.priority[i] = proc.priority;
+
+        fpstat.state[i] = proc.state;
+        for (int j = 0; j < 4; j++) {
+            fpstat.ticks[i][j] = proc.agg_ticks[j];
+            fpstat.qtail[i][j] = proc.qtail[j];
         }
     }
 
+    pstat = &fpstat;
+
+    for(int i = 0; i < NPROC; i++) {
+        cprintf("%d\n", pstat->state[i]);
+    }
     release(&ptable.lock);
     return 0;
 }

@@ -8,7 +8,7 @@
 
 int main(int argc, char *argv[]) {
 
-    sleep(50);
+    sleep(10);
     printf(1, "%d\n", getpid());
     exit();
 }

@@ -19,8 +19,8 @@ int main(int argc, char *argv[]) {
    d:	51                   	push   %ecx
    e:	83 ec 10             	sub    $0x10,%esp
 
-    sleep(50);
-  11:	6a 32                	push   $0x32
+    sleep(10);
+  11:	6a 0a                	push   $0xa
   13:	e8 37 02 00 00       	call   24f <sleep>
     printf(1, "%d\n", getpid());
   18:	e8 22 02 00 00       	call   23f <getpid>
