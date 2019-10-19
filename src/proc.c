@@ -35,7 +35,7 @@ struct queue priorityQueue[4];
 
 struct pstat fpstat;
 
-int timeslices[4] = {12, 12, 12, 12};
+int timeslices[4] = {20, 16, 12, 8};
 
 // ***********************************************************
 
@@ -365,33 +365,31 @@ scheduler(void)
                     //cprintf("TT: %d\n", p->agg_ticks[priority]);
                     //cprintf("PID: %d PRIOR: %d Total Ticks: %d\n", p->pid, p->priority, p->ticks);
 
-                    if (p->ticks == timeslices[priority]) {
+                    if (p->ticks >= timeslices[priority]) {
 
                         // HANDLE CASES WITH THE HEAD FIRST
                         if (priorityQueue[i].head == priorityQueue[i].tail) {
                             // IF HEAD EQUALS TAIL, THEN WE ONLY HAVE ONE ITEM IN QUEUE
                             // IN THIS CASE DO NOT INCREMENT P
-//                            cprintf("%s\n", "HERE1");
+                            p->qtail[priority]++;
+                            p->ticks = 0;
+                            c->proc = 0;
+                            break;
                         } else if (priorityQueue[i].head == p) {
                             // SET HEAD TO NEXT PROC
                             priorityQueue[i].head = p->next;
-//                            cprintf("%s\n", "HERE2");
-
                         } else {
                             prevProc->next = p->next;
                             if (priorityQueue[priority].tail == p) {
                                 priorityQueue[priority].tail = prevProc;
-//                                cprintf("%s\n", "HERE3");
                             }
                         }
 
                         priorityQueue[priority].tail->next = p;
                         priorityQueue[priority].tail = p;
-
                         p->qtail[priority]++;
                         p->ticks = 0;
                         p->next = NULL;
-//                        printQueue();
                     }
 
                     // IF NO CASES ARE MET, BREAK AND REDO SEARCH FROM TOP LEVEL
@@ -400,23 +398,23 @@ scheduler(void)
                     break;
                 } else if (p->state == UNUSED){
                     // need to remove the process because it is unused
-                    p->ticks = 0;
+                    //p->ticks = 0;
                     if (priorityQueue[i].head == priorityQueue[i].tail) {
                         priorityQueue[i].head = NULL;
                         priorityQueue[i].tail = NULL;
+                        break;
                     } else if (p == priorityQueue[i].head){
                        priorityQueue[i].head = priorityQueue[i].head->next;
-                       p = p->next;
                     } else {
                         prevProc->next = p->next;
                         if (priorityQueue[priority].tail == p) {
                             priorityQueue[priority].tail = prevProc;
                             // AT END OF QUEUE, RESTART LOOP
                             priorityQueue[priority].tail->next = NULL;
+                            break;
                         }
-                        p = p->next;
                     }
-
+                    p = p->next;
                 } else {
                     prevProc = p;
                     p = p->next;
@@ -763,7 +761,7 @@ getpinfo(struct pstat *pstat){
     for (int i = 0; i < NPROC; i++){
         struct proc proc = ptable.proc[i];
         int isinuse = proc.state != UNUSED && proc.state != ZOMBIE && proc.state != EMBRYO;
-        pstat->inuse[i] = (isinuse);
+        pstat->inuse[i] = isinuse;
         if (isinuse) {
             pstat->pid[i] = proc.pid;
             pstat->priority[i] = proc.priority;
