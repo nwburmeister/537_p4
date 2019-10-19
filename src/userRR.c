@@ -36,24 +36,26 @@ void roundRobin(int timeslice, int iterations, char *job, int jobcount){
         for(int j = 0; j < NPROC; j++) {
             if (pstat->priority[j] == 2) {
 //                int pri = getpri(pstat->pid[j]);
-                setpri(pstat->pid[j], 3);
+                //setpri(pstat->pid[j], 3);
             }
         }
-
         sleep(timeslice);
     }
 
 
 
-
+    //wait();
     getpinfo(pstat);
     for (int i = 0; i < NPROC; i++) {
         for (int k = 0; k < 4; k++){
             // printf(1, "IS IN-USE %d XV6_SCHEDULER\t \t level %d ticks used %d\n", pstat->inuse[i], k, pstat->ticks[i][k]);
             // printf(1, "XV6_SCHEDULER\t \t level %d ticks used %d\n", k, pstat->ticks[i][k]);
         }
-        if (pstat->state[i] == ZOMBIE) {
+
+        if (pstat->pid[i] > 3) {
             //printf(1, "%s\n", "entered");
+
+            //printf(1, "%s\n", "here");
             wait();
             kill(pstat->pid[i]);
         }
