@@ -14,13 +14,6 @@
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
-  // COPIED FROM PSTAT
-  //int inuse[NPROC]; // whether this slot of the process table is in use (1 or 0)
-//  int pid[NPROC];   // PID of each process
-//  int priority[NPROC];  // current priority level of each process (0-3)
-//  enum procstate state[NPROC];  // current state (e.g., SLEEPING or RUNNABLE) of each process
-//  int ticks[NPROC][4]; // total num ticks each process has accumulated at each priority
-//  int qtail[NPROC][4]; // total num times moved to tail of queue (e.g., setprio, end of timeslice, waking)
 } ptable;
 
 
@@ -36,6 +29,7 @@ struct queue priorityQueue[4];
 struct pstat fpstat;
 
 int timeslices[4] = {20, 16, 12, 8};
+
 
 // ***********************************************************
 
@@ -335,70 +329,71 @@ void
 scheduler(void)
 {
     struct proc *p;
+    struct proc *last = NULL;
     struct cpu *c = mycpu();
     c->proc = 0;
 
     for (;;) {
         // Enable interrupts on this processor.
         sti();
-
         // Loop over process table looking for process to run.
         acquire(&ptable.lock);
 
+
         int i = 0;
+
         for (i = 3; i >= 0; i--) {
             struct proc *prevProc = NULL;
             for (p = priorityQueue[i].head; p != NULL;) {
-                // proc in queue is in ready state
                 int priority = p->priority;
-
                 if (p->state == RUNNABLE) {
+                    if (last != NULL && last->pid != p->pid){
+                        last->ticks = 0;
+                        //cprintf("%d\n", last->pid);
+                    }
 
                     c->proc = p;
                     switchuvm(p);
                     p->state = RUNNING;
                     swtch(&(c->scheduler), p->context);
                     switchkvm();
-
+                    c->proc = 0;
+                    last = p;
                     p->ticks++;
                     p->agg_ticks[priority]++;
-                    //cprintf("TT: %d\n", p->agg_ticks[priority]);
-                    //cprintf("PID: %d PRIOR: %d Total Ticks: %d\n", p->pid, p->priority, p->ticks);
 
-                    if (p->ticks >= timeslices[priority]) {
-
+                    cprintf("PID: %d CURR_TICKS %d AGG_TICKS: %d PRIORITY %d\n", p->pid,p->ticks, p->agg_ticks[priority], priority);
+                    if (p->ticks == timeslices[priority]) {
                         // HANDLE CASES WITH THE HEAD FIRST
                         if (priorityQueue[i].head == priorityQueue[i].tail) {
                             // IF HEAD EQUALS TAIL, THEN WE ONLY HAVE ONE ITEM IN QUEUE
-                            // IN THIS CASE DO NOT INCREMENT P
                             p->qtail[priority]++;
                             p->ticks = 0;
-                            c->proc = 0;
                             break;
                         } else if (priorityQueue[i].head == p) {
                             // SET HEAD TO NEXT PROC
                             priorityQueue[i].head = p->next;
                         } else {
-                            prevProc->next = p->next;
                             if (priorityQueue[priority].tail == p) {
-                                priorityQueue[priority].tail = prevProc;
+                                p->qtail[priority]++;
+                                p->ticks = 0;
+                                break;
+                            } else {
+                                prevProc->next = p->next;
                             }
                         }
-
                         priorityQueue[priority].tail->next = p;
                         priorityQueue[priority].tail = p;
                         p->qtail[priority]++;
                         p->ticks = 0;
                         p->next = NULL;
                     }
-
                     // IF NO CASES ARE MET, BREAK AND REDO SEARCH FROM TOP LEVEL
-
-                    c->proc = 0;
+                    //getpinfohelper();
                     break;
                 } else if (p->state == UNUSED){
                     // need to remove the process because it is unused
-                    //p->ticks = 0;
+                    p->ticks = 0;
                     if (priorityQueue[i].head == priorityQueue[i].tail) {
                         priorityQueue[i].head = NULL;
                         priorityQueue[i].tail = NULL;
@@ -421,9 +416,7 @@ scheduler(void)
                 }
             }
         }
-
     release(&ptable.lock);
-
   }
 }
 
@@ -531,8 +524,41 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
-      p->state = RUNNABLE;
+    if(p->state == SLEEPING && p->chan == chan){
+        p->state = RUNNABLE;
+        p->ticks = 0;
+//        int priority = p->priority;
+//        struct proc *pq;
+//        struct proc *preProc = NULL;
+//
+//        for (pq = priorityQueue[priority].head; pq != NULL;){
+//            if (pq->pid == p->pid){
+//                if (pq == priorityQueue[priority].head && pq == priorityQueue[priority].tail) {
+//                    break;
+//                } else if (pq == priorityQueue[priority].head) {
+//                    priorityQueue[priority].head = pq->next;
+//                    priorityQueue[priority].tail->next = pq;
+//                    priorityQueue[priority].tail = pq;
+//                    pq->next = NULL;
+//
+//                } else {
+//                    if (pq == priorityQueue[priority].tail){
+//
+//                    } else {
+//                        preProc->next = pq->next;
+//                    }
+//                    priorityQueue[priority].tail->next = pq;
+//                    priorityQueue[priority].tail = pq;
+//                    pq->next = NULL;
+//                }
+//                break;
+//            }
+//
+//
+//            preProc = pq;
+//            pq = pq->next;
+//        }
+    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -623,10 +649,8 @@ setpri(int PID, int pri){
                     // TODO: PRINT ERROR MESSAGE
                     return -1;
                 }
-
                 p->priority = pri;
                 p->ticks = 0;
-
                 if (p == priorityQueue[i].head) {
                     // ONLY ONE ITEM ON QUEUE BEING MOVED TO ANOTHER QUEUE
                     priorityQueue[i].head = p->next;
@@ -742,12 +766,36 @@ void printQueue() {
 
     for (int i = 0; i < 4; i++){
         for (p = priorityQueue[i].head; p != NULL;){
-            //cprintf("PID: %d Proc: %p  Next: %p Head: %p Tail: %p\n", p->pid, p, p->next, priorityQueue[i].head, priorityQueue[i].tail);
-            cprintf("PID: %d PRIORITY: %d \n", p->pid, p->priority);
+            cprintf("PID: %d Proc: %p  Next: %p Head: %p Tail: %p\n", p->pid, p, p->next, priorityQueue[i].head, priorityQueue[i].tail);
+            //cprintf("PID: %d PRIORITY: %d \n", p->pid, p->priority);
             p = p->next;
         }
     }
 }
+
+
+//void getpinfohelper() {
+//
+//
+//    for (int i = 0; i < NPROC; i++){
+//        struct proc proc = ptable.proc[i];
+//        int isinuse = proc.state != UNUSED && proc.state != ZOMBIE && proc.state != EMBRYO;
+//        fpstat.inuse[i] = isinuse;
+//        fpstat.pid[i] = proc.pid;
+//        fpstat.priority[i] = proc.priority;
+//        fpstat.state[i] = proc.state;
+//        if (isinuse) {
+//            for (int j = 0; j < 4; j++) {
+//                fpstat.ticks[i][j] = proc.agg_ticks[j];
+//                fpstat.qtail[i][j] = proc.qtail[j];
+//            }
+//        }
+//    }
+//
+//
+//
+//}
+
 
 // returns 0 on success and -1 on failure
 int
@@ -757,15 +805,15 @@ getpinfo(struct pstat *pstat){
         return -1;
     }
 
-    acquire(&ptable.lock);
+    //acquire(&ptable.lock);
     for (int i = 0; i < NPROC; i++){
         struct proc proc = ptable.proc[i];
         int isinuse = proc.state != UNUSED && proc.state != ZOMBIE && proc.state != EMBRYO;
         pstat->inuse[i] = isinuse;
+        pstat->pid[i] = proc.pid;
+        pstat->priority[i] = proc.priority;
+        pstat->state[i] = proc.state;
         if (isinuse) {
-            pstat->pid[i] = proc.pid;
-            pstat->priority[i] = proc.priority;
-            pstat->state[i] = proc.state;
             for (int j = 0; j < 4; j++) {
                 pstat->ticks[i][j] = proc.agg_ticks[j];
                 pstat->qtail[i][j] = proc.qtail[j];
@@ -780,6 +828,6 @@ getpinfo(struct pstat *pstat){
 //        }
 //    }
 
-    release(&ptable.lock);
+    //release(&ptable.lock);
     return 0;
 }
