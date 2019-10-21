@@ -16,7 +16,6 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
-
 // **********************CREATED BY US ***********************
 // CREATE AN ARRAY WITH FOUR PRIORITY QUEUES
 struct queue {
@@ -36,6 +35,76 @@ int timeslices[4] = {20, 16, 12, 8};
 static struct proc *initproc;
 
 void printQueue();
+
+void deleteFromQueue(struct proc *p, int priority){
+  
+  struct proc *prevProc = NULL;
+  struct proc *p_curr;
+  
+  for(p_curr = priorityQueue[priority].head; p_curr != NULL;) {
+    if (p == p_curr){
+      
+      if (priorityQueue[priority].head == NULL && priorityQueue[priority].tail == NULL) {
+        //cprintf("%s\n", "modified 1");
+        p_curr->next = NULL;
+      } else if (priorityQueue[priority].head == priorityQueue[priority].tail){
+        //cprintf("%s\n", "modified 2");
+        priorityQueue[priority].head = NULL;
+        priorityQueue[priority].tail = NULL;
+        p_curr->next = NULL;
+      }else if (p_curr == priorityQueue[priority].head) {
+        //cprintf("%s\n", "modified 3");
+        priorityQueue[priority].head = p_curr->next;
+        p_curr->next = NULL;
+        
+      } else if (p_curr == priorityQueue[priority].tail){
+        //cprintf("%s\n", "modified 4");
+        prevProc->next = NULL;
+        priorityQueue[priority].tail = prevProc;
+        p_curr->next = NULL;
+        
+      } else {
+        // in the middle
+        //cprintf("%s\n", "modified 5");
+        prevProc->next = p_curr->next;
+        p_curr->next = NULL;
+        
+      }
+      break;
+    }
+    cprintf("%s\n", "here");
+    prevProc = p_curr;
+    p_curr = p_curr->next;
+  }
+}
+
+void enqueueProc(struct proc *p, int priority){
+  // 3 cases: head == tail -> empty or 1, 
+  //cprintf("%s\n", "enqueuing");
+  if (priorityQueue[priority].head == NULL && priorityQueue[priority].tail == NULL) {
+    // empty queue
+    //cprintf("%s\n", "enqueuing2");
+    priorityQueue[priority].head = p;
+    priorityQueue[priority].tail = p;
+    p->next = NULL;
+    //printQueue();
+  } else {
+    // other case where queue is populated, just send to back
+    //cprintf("%s\n", "enqueuing to non empty");
+    priorityQueue[priority].tail->next = p;
+    priorityQueue[priority].tail = p;
+    p->next = NULL;
+    //printQueue();
+  } 
+  //p->qtail[p->priority]++;
+  //p->ticks = 0;
+  //cprintf("%s\n", "PRINTING NEW Q");
+  //printQueue();
+}
+
+
+
+
 
 int nextpid = 1;
 extern void forkret(void);
@@ -113,10 +182,12 @@ allocproc(void)
     found:
         p->state = EMBRYO;
         p->pid = nextpid++;
-        p->agg_ticks[0] = 0;
-        p->agg_ticks[1] = 0;
-        p->agg_ticks[2] = 0;
-        p->agg_ticks[3] = 0;
+
+        for (int i = 0; i < 4; i++){
+          p->agg_ticks[i] = 0;
+          p->qtail[i] = 0;
+        }
+        
         p->ticks = 0;
 
         release(&ptable.lock);
@@ -185,10 +256,13 @@ userinit(void)
 
     if (priorityQueue[p->priority].head == NULL && priorityQueue[p->priority].tail == NULL) {
         p->ticks = 0;
-        p->agg_ticks[0] = 0;
-        p->agg_ticks[1] = 0;
-        p->agg_ticks[2] = 0;
-        p->agg_ticks[3] = 0;
+        
+        for (int i = 0; i < 4; i++){
+          p->agg_ticks[i] = 0;
+          p->qtail[i] = 0;
+        }
+        
+        
         priorityQueue[p->priority].head = p;
         priorityQueue[p->priority].tail = p;
     }
@@ -318,6 +392,74 @@ wait(void)
   }
 }
 
+
+void
+scheduler(void)
+{
+    struct proc *p;
+    //struct proc *last = NULL;
+    struct cpu *c = mycpu();
+    c->proc = 0;
+
+    for (;;) {
+        // Enable interrupts on this processor.
+        sti();
+        // Loop over process table looking for process to run.
+        acquire(&ptable.lock);
+
+        int i = 0;
+        for (i = 3; i >= 0; i--){
+          for(p = priorityQueue[i].head; p != NULL;) {
+            if (p->state == RUNNABLE){
+              goto foundPROC;
+            }else {
+              deleteFromQueue(p, i);
+              i = -1;
+            }
+            p = p->next;
+          }
+        }
+        release(&ptable.lock);
+        
+        foundPROC:
+          
+          c->proc = p;
+          switchuvm(p);
+          p->state = RUNNING;
+          swtch(&(c->scheduler), p->context);
+          switchkvm();
+          c->proc = 0;
+
+          p->ticks++;
+          printQueue();
+
+          if (p->state == RUNNABLE){
+            //cprintf("PID: %d TICKS: %d level: %d\n", p->pid, p->ticks, i);
+            if (p->ticks == timeslices[i]) {
+              p->agg_ticks[i] += p->ticks;
+              p->ticks = 0;
+              deleteFromQueue(p, i);
+              enqueueProc(p, i);
+            }
+          } else {
+            //cprintf("PID: %d TICKS: %d level: %d\n", p->pid, p->ticks, i);
+            if (p->ticks == timeslices[i]) {
+              p->agg_ticks[i] += p->ticks;
+              p->ticks = 0;
+              deleteFromQueue(p, i);
+              enqueueProc(p, i);
+            }
+            deleteFromQueue(p, i);
+          }
+
+        release(&ptable.lock);
+  }
+}
+
+
+
+
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -326,7 +468,7 @@ wait(void)
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
 void
-scheduler(void)
+scheduler2(void)
 {
     struct proc *p;
     struct proc *last = NULL;
@@ -347,36 +489,53 @@ scheduler(void)
             for (p = priorityQueue[i].head; p != NULL;) {
                 int priority = p->priority;
                 if (p->state == RUNNABLE) {
-                    if (last != NULL && last->pid != p->pid){
-                        last->ticks = 0;
-                        //cprintf("%d\n", last->pid);
-                    }
-
                     c->proc = p;
                     switchuvm(p);
                     p->state = RUNNING;
                     swtch(&(c->scheduler), p->context);
                     switchkvm();
                     c->proc = 0;
+
+                    if (p->state != RUNNABLE){  
+                      //cprintf("%d %d\n", p->pid, p->ticks);
+                      if (p->ticks >= timeslices[priority]){
+                        p->agg_ticks[priority] += timeslices[priority];
+                        p->ticks = 0;
+                        last = NULL;
+                        break;  
+                      }
+                      p->ticks++;
+                      last = p;
+                      
+                    }
+
+                    if (last != NULL && last->pid != p->pid){
+                        last->ticks = 0; // this is the pre-empted child
+                    } 
+                    
                     last = p;
                     p->ticks++;
-                    p->agg_ticks[priority]++;
-
-                    cprintf("PID: %d CURR_TICKS %d AGG_TICKS: %d PRIORITY %d\n", p->pid,p->ticks, p->agg_ticks[priority], priority);
+                    // cprintf("PID: %d CURR_TICKS %d AGG_TICKS: %d PRIORITY %d\n", p->pid,p->ticks, p->agg_ticks[priority], priority);
                     if (p->ticks == timeslices[priority]) {
                         // HANDLE CASES WITH THE HEAD FIRST
+                        
                         if (priorityQueue[i].head == priorityQueue[i].tail) {
                             // IF HEAD EQUALS TAIL, THEN WE ONLY HAVE ONE ITEM IN QUEUE
+                            p->agg_ticks[priority] += timeslices[priority];
                             p->qtail[priority]++;
                             p->ticks = 0;
+                            last = NULL;
                             break;
                         } else if (priorityQueue[i].head == p) {
                             // SET HEAD TO NEXT PROC
                             priorityQueue[i].head = p->next;
+                            p->agg_ticks[priority] += timeslices[priority];
                         } else {
+                            p->agg_ticks[priority] += timeslices[priority];
                             if (priorityQueue[priority].tail == p) {
                                 p->qtail[priority]++;
                                 p->ticks = 0;
+                                last = NULL;
                                 break;
                             } else {
                                 prevProc->next = p->next;
@@ -386,32 +545,19 @@ scheduler(void)
                         priorityQueue[priority].tail = p;
                         p->qtail[priority]++;
                         p->ticks = 0;
+                        last = NULL;
                         p->next = NULL;
                     }
-                    // IF NO CASES ARE MET, BREAK AND REDO SEARCH FROM TOP LEVEL
-                    //getpinfohelper();
                     break;
-                } else if (p->state == UNUSED){
+                } else if (p->state != RUNNABLE){
                     // need to remove the process because it is unused
-                    p->ticks = 0;
-                    if (priorityQueue[i].head == priorityQueue[i].tail) {
-                        priorityQueue[i].head = NULL;
-                        priorityQueue[i].tail = NULL;
-                        break;
-                    } else if (p == priorityQueue[i].head){
-                       priorityQueue[i].head = priorityQueue[i].head->next;
-                    } else {
-                        prevProc->next = p->next;
-                        if (priorityQueue[priority].tail == p) {
-                            priorityQueue[priority].tail = prevProc;
-                            // AT END OF QUEUE, RESTART LOOP
-                            priorityQueue[priority].tail->next = NULL;
-                            break;
-                        }
-                    }
+                    //p->ticks = 0;
+                    deleteFromQueue(p, priority);
+                    //enqueueProc()
                     p = p->next;
                 } else {
                     prevProc = p;
+                    last = p;
                     p = p->next;
                 }
             }
@@ -503,7 +649,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+  
   sched();
 
   // Tidy up.
@@ -526,38 +672,11 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
         p->state = RUNNABLE;
+        p->agg_ticks[p->priority] += p->ticks;
         p->ticks = 0;
-//        int priority = p->priority;
-//        struct proc *pq;
-//        struct proc *preProc = NULL;
-//
-//        for (pq = priorityQueue[priority].head; pq != NULL;){
-//            if (pq->pid == p->pid){
-//                if (pq == priorityQueue[priority].head && pq == priorityQueue[priority].tail) {
-//                    break;
-//                } else if (pq == priorityQueue[priority].head) {
-//                    priorityQueue[priority].head = pq->next;
-//                    priorityQueue[priority].tail->next = pq;
-//                    priorityQueue[priority].tail = pq;
-//                    pq->next = NULL;
-//
-//                } else {
-//                    if (pq == priorityQueue[priority].tail){
-//
-//                    } else {
-//                        preProc->next = pq->next;
-//                    }
-//                    priorityQueue[priority].tail->next = pq;
-//                    priorityQueue[priority].tail = pq;
-//                    pq->next = NULL;
-//                }
-//                break;
-//            }
-//
-//
-//            preProc = pq;
-//            pq = pq->next;
-//        }
+        deleteFromQueue(p, p->priority);
+        enqueueProc(p, p->priority);
+        p->qtail[p->priority]++;
     }
 }
 
@@ -744,11 +863,12 @@ fork2(int pri) {
     if (priorityQueue[pri].head == NULL && priorityQueue[pri].tail == NULL) {
         priorityQueue[pri].head = np;
         priorityQueue[pri].tail = np;
+        
     } else {
         priorityQueue[pri].tail->next = np;
         priorityQueue[pri].tail = np;
     }
-
+    np->qtail[pri]++;
     np->next = NULL;
     np->priority = pri;
 
@@ -805,7 +925,7 @@ getpinfo(struct pstat *pstat){
         return -1;
     }
 
-    //acquire(&ptable.lock);
+    acquire(&ptable.lock);
     for (int i = 0; i < NPROC; i++){
         struct proc proc = ptable.proc[i];
         int isinuse = proc.state != UNUSED && proc.state != ZOMBIE && proc.state != EMBRYO;
@@ -815,6 +935,7 @@ getpinfo(struct pstat *pstat){
         pstat->state[i] = proc.state;
         if (isinuse) {
             for (int j = 0; j < 4; j++) {
+                
                 pstat->ticks[i][j] = proc.agg_ticks[j];
                 pstat->qtail[i][j] = proc.qtail[j];
             }
@@ -828,6 +949,6 @@ getpinfo(struct pstat *pstat){
 //        }
 //    }
 
-    //release(&ptable.lock);
+    release(&ptable.lock);
     return 0;
 }

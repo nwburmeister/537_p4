@@ -186,6 +186,7 @@ UPROGS=\
 	_userRR\
 	_loop\
 	_test_11\
+	_test_18\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
